@@ -1,0 +1,12 @@
+node_modules/
+client/dist/
+server/public/assets/
+server/public/index.html
+server/public/templates/
+*.db
+*.sqlite
+data/
+.env
+*.log
+/tmp/
+.DS_Store

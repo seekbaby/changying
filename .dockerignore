@@ -1,0 +1,12 @@
+node_modules
+client/node_modules
+server/node_modules
+client/dist
+data/*
+*.db
+*.db-shm
+*.db-wal
+.git
+.DS_Store
+scripts/test_iflytek.js
+*.log
