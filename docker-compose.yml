@@ -1,18 +1,15 @@
 # ============================================================
-# 长盈 1.0 — Docker Compose 一键部署
-# 用法: docker compose up -d
+# 长盈 v3 — Docker Compose + Watchtower 自动更新
+# 飞牛NAS通用：一次部署，后续全自动
+# ⚠️ 使用前确认目录：/vol1/docker/changying/
 # ============================================================
 
 services:
+  # ── 长盈主服务 ──
   changying:
-    image: changying:2.5
+    image: seekbaby/changying:latest
     container_name: changying
-    build:
-      context: .
-      dockerfile: Dockerfile
-      platforms:
-        - linux/arm64
-        - linux/amd64
+    pull_policy: always
     ports:
       - "3000:3000"
     volumes:
@@ -22,12 +19,16 @@ services:
       - TZ=Asia/Shanghai
       - PORT=3000
       - DB_DIR=/app/data
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+
+  # ── Watchtower 自动更新守护 ──
+  # 每60秒检查一次镜像更新，发现新版本自动重建容器
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: changying-watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 60 --cleanup changying
+    restart: unless-stopped
 
 volumes:
   changying_data:
