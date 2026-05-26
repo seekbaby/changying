@@ -3,7 +3,7 @@
 # 用法: curl -fsSL https://raw.githubusercontent.com/simon-yin-1983/changying/main/deploy/nas-gh-deploy.sh | bash
 set -e
 
-REPO="https://github.com/simon-yin-1983/changying.git"
+REPO="https://github.com/seekbaby/changying.git"
 APP_DIR="/vol1/docker/changying"
 BACKUP_DIR="/vol1/docker/changying_backup_$(date +%Y%m%d_%H%M%S)"
 
