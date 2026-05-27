@@ -10,6 +10,7 @@ const adminService = require('../services/admin.service');
 const doctorService = require('../services/doctor.service');
 const dashboardService = require('../services/dashboard.service');  // v3.0
 const inventoryService = require('../services/inventory.service');  // v3.0
+const recordingService = require('../services/recording.service');  // v4.0
 const snapshot = require('../core/StateSnapshot');
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '123';
@@ -386,6 +387,27 @@ function handleMessage(ws, rawData) {
       case 'INVENTORY_BALANCE': {
         const r = inventoryService.checkBalance(payload.visitId);
         broadcast.send(ws, action, requestId, true, { balanced: r.balanced, unsettled: r.unsettled });
+        break;
+      }
+
+      // v4.0: 录音列表
+      case 'RECORDING_LIST': {
+        const list = recordingService.listByVisit(Number(payload.visitId));
+        broadcast.send(ws, action, requestId, true, { recordings: list });
+        break;
+      }
+
+      // v4.0: 录音详情
+      case 'RECORDING_GET': {
+        const rec = recordingService.getById(Number(payload.id));
+        broadcast.send(ws, action, requestId, !!rec, { recording: rec }, rec ? '' : '录音不存在');
+        break;
+      }
+
+      // v4.0: 删除录音
+      case 'RECORDING_DELETE': {
+        const ok = recordingService.remove(Number(payload.id));
+        broadcast.send(ws, action, requestId, ok, {}, ok ? '' : '删除失败');
         break;
       }
 

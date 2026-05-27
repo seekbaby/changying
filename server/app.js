@@ -10,6 +10,7 @@ const fs = require('fs');
 const { initDatabase } = require('./database/init');
 const adminRoutes = require('./routes/admin.routes');
 const photoRoutes = require('./routes/photo.routes');
+const recordingRoutes = require('./routes/recording.routes');
 const { handleMessage, pushGlobalState } = require('./handlers/index');
 const { setWss } = require('./utils/broadcast');
 const snapshot = require('./core/StateSnapshot');
@@ -33,6 +34,18 @@ app.use('/photos', express.static(photosDir));
 // API路由
 app.use('/api', adminRoutes);
 app.use('/api', photoRoutes);
+app.use('/api', recordingRoutes);
+
+// 录音静态目录（供百炼下载）
+const recordingsDir = path.join(__dirname, '..', 'data', 'recordings');
+if (!fs.existsSync(recordingsDir)) {
+  fs.mkdirSync(recordingsDir, { recursive: true });
+}
+const recordingsPublicDir = path.join(__dirname, 'public', 'recordings');
+if (!fs.existsSync(recordingsPublicDir)) {
+  fs.mkdirSync(recordingsPublicDir, { recursive: true });
+}
+app.use('/recordings', express.static(recordingsPublicDir));
 
 // 静态文件（前端构建产物）
 const publicDir = path.join(__dirname, 'public');

@@ -142,6 +142,22 @@ CREATE TABLE visit_inventory (
 );
 CREATE INDEX idx_vi_visit ON visit_inventory(visit_id);
 
+-- ── ★ v4.0: 面诊录音 + AI分析报告 ──
+CREATE TABLE visit_recordings (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    visit_id        INTEGER NOT NULL REFERENCES visits(id) ON DELETE CASCADE,
+    guest_name      TEXT    NOT NULL,
+    file_path       TEXT    NOT NULL,          -- 录音文件路径
+    file_size       INTEGER,
+    duration_sec    REAL,
+    transcript      TEXT    DEFAULT '',        -- 百炼ASR转写文本
+    report_json     TEXT    DEFAULT '{}',      -- DeepSeek分析报告(JSON)
+    status          TEXT    DEFAULT 'uploaded' CHECK(status IN ('uploaded','transcribing','transcribed','analyzing','completed','failed')),
+    error_message   TEXT,
+    created_at      INTEGER NOT NULL
+);
+CREATE INDEX idx_vrec_visit ON visit_recordings(visit_id);
+
 -- ── 管理员操作日志 ──
 CREATE TABLE admin_operations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,

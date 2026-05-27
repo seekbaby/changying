@@ -35,7 +35,10 @@
             >
               <div class="ch-visit-header">
                 <span class="ch-visit-date">{{ fmtDate(v.visit_date) }}</span>
-                <span class="ch-visit-duration">{{ v.totalMin }}分钟</span>
+                <div class="ch-visit-actions">
+                  <button class="ch-rec-btn" @click.stop="openRecording(v)" title="面诊录音">🎙</button>
+                  <span class="ch-visit-duration">{{ v.totalMin }}分钟</span>
+                </div>
               </div>
               <div class="ch-visit-doctors" v-if="v.doctors.length">
                 <span v-for="d in v.doctors" :key="d.id" class="ch-doctor-tag">
@@ -110,6 +113,14 @@
         <div v-if="previewSrc" class="ch-preview-overlay" @click="previewSrc = null">
           <img :src="previewSrc" class="ch-preview-img" @click.stop />
         </div>
+
+        <!-- ═══════ 录音弹窗 v4.0 ═══════ -->
+        <RecordingView
+          v-if="recordingVisit"
+          :visit-id="recordingVisit.id"
+          :guest-name="recordingVisit.guest_name"
+          @close="recordingVisit = null"
+        />
       </div>
     </div>
   </Teleport>
@@ -118,6 +129,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useWebSocket } from '../composables/useWebSocket'
+import RecordingView from './RecordingView.vue'
 
 const emit = defineEmits(['close'])
 const { send } = useWebSocket()
@@ -135,6 +147,12 @@ const dragOverSlot = ref(null)
 
 // 大图预览
 const previewSrc = ref(null)
+
+// 录音弹窗 v4.0
+const recordingVisit = ref(null)
+function openRecording(visit) {
+  recordingVisit.value = visit
+}
 
 // ★ v3.0: 打开即自动加载全部顾客历史
 onMounted(() => { doSearch() })
@@ -279,6 +297,15 @@ function previewPhoto(photo) {
 .ch-visit-duration {
   color: #64748b; font-size: 12px;
 }
+.ch-visit-actions {
+  display: flex; align-items: center; gap: 8px;
+}
+.ch-rec-btn {
+  background: #0f3460; border: 1px solid #2563eb; color: #60a5fa;
+  padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 13px;
+  transition: background 0.2s;
+}
+.ch-rec-btn:hover { background: #1e40af; }
 .ch-visit-doctors {
   display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px;
 }

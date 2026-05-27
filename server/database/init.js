@@ -179,6 +179,29 @@ function runMigrations() {
       db.exec(`ALTER TABLE visit_inventory ADD COLUMN note TEXT DEFAULT ''`);
     }
   }
+  // ── v4.0: visit_recordings（面诊录音+AI分析）──
+  const hasRecordings = db.prepare(
+    "SELECT count(*) as cnt FROM sqlite_master WHERE type='table' AND name='visit_recordings'"
+  ).get().cnt;
+  if (hasRecordings === 0) {
+    console.log('[DB] 迁移: 创建 visit_recordings 表...');
+    db.exec(`
+      CREATE TABLE visit_recordings (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        visit_id        INTEGER NOT NULL REFERENCES visits(id) ON DELETE CASCADE,
+        guest_name      TEXT    NOT NULL,
+        file_path       TEXT    NOT NULL,
+        file_size       INTEGER,
+        duration_sec    REAL,
+        transcript      TEXT    DEFAULT '',
+        report_json     TEXT    DEFAULT '{}',
+        status          TEXT    DEFAULT 'uploaded',
+        error_message   TEXT,
+        created_at      INTEGER NOT NULL
+      );
+      CREATE INDEX idx_vrec_visit ON visit_recordings(visit_id);
+    `);
+  }
 }
 
 module.exports = { db, initDatabase, DB_PATH };
