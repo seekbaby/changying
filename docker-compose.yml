@@ -18,6 +18,9 @@ services:
       - TZ=Asia/Shanghai
       - PORT=3000
       - DB_DIR=/app/data
+      - BAILIAN_API_KEY=sk-f363d6e4ea3c4a80962e4c42b04074cf
+      - DEEPSEEK_API_KEY=sk-390367dae5e7418e8c38ab1e18860431
+      - PUBLIC_BASE_URL=https://magicreviewbox.com
 
   # Watchtower 每60秒检查 ghcr.io 镜像更新，自动重建
   watchtower:
