@@ -63,13 +63,16 @@ class VisitService {
       return { success: false, error: '医生无状态推进权限，仅可添加备注' };
     }
 
-    // 医助：面诊结束时强制录入治疗方案
+    // 医助：面诊结束时提示录入治疗方案（不拦截）
     if (operatorRole === 'assistant' && fromStatus === 'CONSULTATION') {
       const plans = db.prepare(
         `SELECT COUNT(*) as cnt FROM visit_notes WHERE visit_id = ? AND note_type = 'treatment_plan'`
       ).get(visitId);
       if (!plans || plans.cnt === 0) {
-        return { success: false, error: '面诊结束前必须先录入治疗方案', requireTreatmentPlan: true };
+        // 仅提示，不阻止推进
+        const msg = db.prepare(`INSERT INTO visit_notes (visit_id, author_id, author_role, note_type, content, created_at)
+          VALUES (?, ?, 'assistant', 'general', '⚠️ 系统提示：面诊结束前未录入治疗方案', ?)`);
+        msg.run(visitId, null, Date.now());
       }
     }
     
@@ -170,6 +173,21 @@ class VisitService {
     this._addSystemNote(visitId, null, 'DISCHARGED', null);
     snapshot.removeVisit(visitId);
     return { success: true };
+  }
+
+  // ── v4.1: 护士分配医助 ──
+  assignAssistant(visitId, assistantId) {
+    const visit = db.prepare('SELECT * FROM visits WHERE id = ?').get(visitId);
+    if (!visit) return { success: false, error: '接诊单不存在' };
+    db.prepare('UPDATE visits SET assigned_assistant_id = ? WHERE id = ?').run(assistantId || null, visitId);
+    const updated = db.prepare(`
+      SELECT v.*, s.name as nurse_name, a.name as assistant_name
+      FROM visits v
+      LEFT JOIN staff s ON v.assigned_nurse_id = s.id
+      LEFT JOIN staff a ON v.assigned_assistant_id = a.id
+      WHERE v.id = ?
+    `).get(visitId);
+    return { success: true, visit: updated };
   }
 
   /** 交接：将接诊单转给另一位护士 */

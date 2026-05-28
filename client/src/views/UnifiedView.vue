@@ -50,9 +50,10 @@
           <div class="vr-line2">
             <span class="vr-room">{{ roomName(v.current_room_id) }}</span>
             <span class="vr-nurse">{{ v.nurse_name || '--' }}</span>
+            <span v-if="v.assistant_name" class="vr-assistant">👩‍⚕️{{ v.assistant_name }}</span>
             <span v-if="v.current_doctor_name" class="vr-doctor">👨‍⚕️{{ v.current_doctor_name }}</span>
             <button class="vr-photo-btn" @click.stop="openPhotoModule(v)">📱照</button>
-            <button class="vr-consult-btn" disabled title="面诊记录（即将开放）">🎙</button>
+            <button class="vr-consult-btn" @click.stop="openRecording(v)" title="面诊录音">🎙</button>
           </div>
         </div>
 
@@ -106,9 +107,9 @@
             </div>
           </div>
 
-          <!-- ★ v2.5: 治疗医生（独立于状态推进，任何状态下都可选） -->
-          <div class="detail-doctor">
-            <span class="detail-section-label">👨‍⚕️ 治疗医生</span>
+          <!-- ★ v4.1: 医生选择（仅医生/医助/主管可操作） -->
+          <div v-if="canSelectDoctor" class="detail-doctor">
+            <span class="detail-section-label">👨‍⚕️ 医生</span>
             <div class="da-controls">
               <select v-model="doctorTarget[v.id]" class="doctor-select">
                 <option :value="null">无</option>
@@ -160,6 +161,18 @@
           </div>
 
           <!-- Room change -->
+          <!-- ★ v4.1: 护士分配医助 -->
+          <div v-if="canAssignAssistant" class="detail-assistant">
+            <span class="detail-section-label">👩‍⚕️ 分配医助</span>
+            <div class="da-controls">
+              <select v-model="assistantTarget[v.id]" class="assistant-select">
+                <option :value="null">未分配</option>
+                <option v-for="a in assistantList" :key="a.id" :value="a.id">{{ a.name }}{{ a.department ? '·'+a.department : '' }}</option>
+              </select>
+              <button class="btn-assistant-save" @click="doAssignAssistant(v.id)">保存</button>
+            </div>
+          </div>
+
           <div v-if="canAdvance" class="detail-room-change">
             <span class="detail-section-label">🏠 所在位置</span>
             <div class="da-controls">
@@ -282,6 +295,14 @@
       v-if="showCustomerHistory"
       @close="showCustomerHistory = false"
     />
+
+    <!-- 面诊录音 v4.0 -->
+    <RecordingView
+      v-if="showRecording && recordingVisit"
+      :visit-id="recordingVisit.id"
+      :guest-name="recordingVisit.guest_name"
+      @close="showRecording = false"
+    />
   </div>
 </template>
 
@@ -293,6 +314,7 @@ import { useVisitStore } from '../stores/useVisitStore'
 import { useWebSocket } from '../composables/useWebSocket'
 import PhotoModule from './PhotoModule.vue'
 import CustomerHistory from './CustomerHistory.vue'
+import RecordingView from './RecordingView.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -308,17 +330,29 @@ const avatarEmoji = computed(() => {
 })
 const canCreate = computed(() => ['reception','nurse','manager','admin'].includes(auth.role))
 const canAdvance = computed(() => ['reception','nurse','assistant','manager','admin'].includes(auth.role))
+const canSelectDoctor = computed(() => ['doctor','assistant','manager','admin'].includes(auth.role))
+const canAssignAssistant = computed(() => ['nurse','manager','admin'].includes(auth.role))
 const canHandover = computed(() => ['nurse','assistant','manager','admin'].includes(auth.role))
 const canDashboard = computed(() => ['admin','manager'].includes(auth.role))  // v3.0
 const canAdmin = computed(() => ['admin','manager'].includes(auth.role))  // v3.0: 管理员+主管可进管理后台
-const canLockInventory = computed(() => ['assistant','manager'].includes(auth.role))  // v3.0
+const canLockInventory = computed(() => ['doctor','assistant','manager','admin'].includes(auth.role))  // v3.0 → v4.1 +doctor
 const showPhotoModule = ref(false)
 const showCustomerHistory = ref(false)
+const showRecording = ref(false)
+const recordingVisit = ref(null)
+const assistantList = ref([])
+const assistantTarget = reactive({})
+let assistantFetched = false
 const photoVisit = ref(null)
 
 function openPhotoModule(v) {
   photoVisit.value = { id: v.id, name: v.guest_name }
   showPhotoModule.value = true
+}
+
+function openRecording(v) {
+  recordingVisit.value = { id: v.id, guest_name: v.guest_name }
+  showRecording.value = true
 }
 
 // ══════ Status constants ══════
@@ -439,6 +473,8 @@ function toggleExpand(v) {
     doctorTarget[v.id] = v.current_doctor_id || null  // ★ v2.5: 初始化医生下拉
     // 确保医生列表已加载
     if (!doctorFetched) fetchDoctorList()
+    if (!assistantFetched) fetchAssistantList()
+    assistantTarget[v.id] = v.assistant_id || null
     // ★ v3.0: 加载耗材列表（全员都需要看到已锁耗材状态）
     if (!inventoryFetched) fetchInventory()
     // ★ 初始化耗材表单（否则模板访问 invForm[v.id].itemId 时 undefined 崩溃白屏）
@@ -552,6 +588,24 @@ async function doAdvance(visitId) {
 }
 
 // ★ v2.5: 独立设置/切换治疗医生
+async function fetchAssistantList() {
+  try {
+    const result = await send('STAFF_LIST', {})
+    if (result.success) {
+      assistantList.value = (result.payload.staff || []).filter(s => s.role === 'assistant')
+      assistantFetched = true
+    }
+  } catch(e) { console.warn('[AsstList] fetch failed:', e.message) }
+}
+
+async function doAssignAssistant(visitId) {
+  const assistantId = assistantTarget[visitId]
+  try {
+    const result = await send('VISIT_ASSIGN_ASSISTANT', { visitId, assistantId })
+    if (!result.success) alert(result.error || '分配医助失败')
+  } catch(e) { alert(e.message || '分配医助失败') }
+}
+
 async function doSetDoctor(visitId) {
   const doctorId = doctorTarget[visitId]
   try {
@@ -835,6 +889,7 @@ function doLogout() {
 .vr-nurse { font-size: 11px; color: #64748b; white-space: nowrap; }
 .vr-nurse::before { content: '👤'; margin-right: 1px; font-size: 10px; }
 .vr-doctor { font-size: 11px; color: #0ea5e9; white-space: nowrap; font-weight: 500; }
+.vr-assistant { font-size: 11px; color: #ec4899; white-space: nowrap; font-weight: 500; }
 
 /* ★ v2.5: 治疗医生（独立区域） */
 .detail-doctor {

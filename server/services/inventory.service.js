@@ -37,14 +37,14 @@ class InventoryService {
   }
 
   /** 创建耗材 */
-  createItem(name, unit = '支', safetyStock = 5) {
+  createItem(name, unit = '支', safetyStock = 5, initialStock = 0) {
     const exists = db.prepare('SELECT id FROM inventory_items WHERE name = ?').get(name);
     if (exists) return { success: false, error: '耗材名称已存在' };
     const now = Date.now();
     const result = db.prepare(
-      'INSERT INTO inventory_items (name, unit, safety_stock, created_at) VALUES (?, ?, ?, ?)'
-    ).run(name, unit, safetyStock, now);
-    return { success: true, item: { id: result.lastInsertRowid, name, unit, current_stock: 0, safety_stock: safetyStock } };
+      'INSERT INTO inventory_items (name, unit, current_stock, safety_stock, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run(name, unit, initialStock, safetyStock, now);
+    return { success: true, item: { id: result.lastInsertRowid, name, unit, current_stock: initialStock, safety_stock: safetyStock } };
   }
 
   /** 停用/启用耗材 */
@@ -219,6 +219,38 @@ class InventoryService {
         diff: r.qty_ordered - (r.qty_verified || 0)
       }))
     };
+  }
+  adjustStock(itemId, delta, operatorId) {
+    if (!delta || delta === 0) return { success: false, error: '调整量不能为0' };
+    const item = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(itemId);
+    if (!item) return { success: false, error: '耗材不存在' };
+    const newStock = item.current_stock + delta;
+    if (newStock < 0) return { success: false, error: '库存不足，无法扣减' };
+    const now = Date.now();
+    const runAdj = db.transaction(() => {
+      db.prepare('UPDATE inventory_items SET current_stock = ? WHERE id = ?').run(newStock, itemId);
+      db.prepare(`INSERT INTO inventory_logs (item_id, type, quantity, operator_id, note, created_at)
+        VALUES (?, 'adjust', ?, ?, ?, ?)`).run(itemId, delta, operatorId, `库存调整 ${delta>0?'+'+delta:delta}`, now);
+    });
+    runAdj();
+    return { success: true, new_stock: newStock };
+  }
+
+  /** 查询耗材操作日志 */
+  getLogs(itemId, limit = 50) {
+    const sql = itemId
+      ? `SELECT l.*, s.name as operator_name, i.name as item_name
+         FROM inventory_logs l
+         LEFT JOIN staff s ON l.operator_id = s.id
+         LEFT JOIN inventory_items i ON l.item_id = i.id
+         WHERE l.item_id = ?
+         ORDER BY l.created_at DESC LIMIT ?`
+      : `SELECT l.*, s.name as operator_name, i.name as item_name
+         FROM inventory_logs l
+         LEFT JOIN staff s ON l.operator_id = s.id
+         LEFT JOIN inventory_items i ON l.item_id = i.id
+         ORDER BY l.created_at DESC LIMIT ?`;
+    return db.prepare(sql).all(...(itemId ? [itemId, limit] : [limit]));
   }
 }
 

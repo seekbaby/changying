@@ -179,6 +179,15 @@ function runMigrations() {
       db.exec(`ALTER TABLE visit_inventory ADD COLUMN note TEXT DEFAULT ''`);
     }
   }
+  // ── v4.1: visits.assigned_assistant_id ──
+  const hasAssistantCol = db.prepare(
+    "SELECT count(*) as cnt FROM pragma_table_info('visits') WHERE name='assigned_assistant_id'"
+  ).get().cnt;
+  if (hasAssistantCol === 0) {
+    console.log('[DB] 迁移: visits 表添加 assigned_assistant_id 列...');
+    db.exec(`ALTER TABLE visits ADD COLUMN assigned_assistant_id INTEGER REFERENCES staff(id);`);
+  }
+
   // ── v4.0: visit_recordings（面诊录音+AI分析）──
   const hasRecordings = db.prepare(
     "SELECT count(*) as cnt FROM sqlite_master WHERE type='table' AND name='visit_recordings'"

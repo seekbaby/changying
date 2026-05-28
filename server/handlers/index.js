@@ -316,10 +316,10 @@ function handleMessage(ws, rawData) {
         break;
       }
 
-      // 进货入库（仅主管）
+      // 进货入库（主管/管理员）
       case 'INVENTORY_INBOUND': {
-        if (user?.role !== 'manager') {
-          broadcast.send(ws, action, requestId, false, {}, '仅主管可进行进货操作');
+        if (!['manager','admin'].includes(user?.role)) {
+          broadcast.send(ws, action, requestId, false, {}, '仅主管和管理员可进行进货操作');
           break;
         }
         const r = inventoryService.inbound(payload.itemId, payload.quantity, user.staffId, payload.note);
@@ -328,10 +328,10 @@ function handleMessage(ws, rawData) {
         break;
       }
 
-      // 开单锁货（医助/主管）
+      // 开单锁货（医助/主管/管理员）
       case 'INVENTORY_LOCK': {
-        if (!['assistant','manager'].includes(user?.role)) {
-          broadcast.send(ws, action, requestId, false, {}, '仅医助和主管可开单锁货');
+        if (!['assistant','manager','admin'].includes(user?.role)) {
+          broadcast.send(ws, action, requestId, false, {}, '仅医助、主管和管理员可开单锁货');
           break;
         }
         const r = inventoryService.lockItems(payload.visitId, payload.items, user.staffId);
@@ -359,22 +359,22 @@ function handleMessage(ws, rawData) {
         break;
       }
 
-      // 创建耗材（仅主管）
+      // 创建耗材（主管/管理员）
       case 'INVENTORY_CREATE_ITEM': {
-        if (user?.role !== 'manager') {
-          broadcast.send(ws, action, requestId, false, {}, '仅主管可创建耗材');
+        if (!['manager','admin'].includes(user?.role)) {
+          broadcast.send(ws, action, requestId, false, {}, '仅主管和管理员可创建耗材');
           break;
         }
-        const r = inventoryService.createItem(payload.name, payload.unit, payload.safetyStock);
+        const r = inventoryService.createItem(payload.name, payload.unit, payload.safetyStock, payload.initialStock || 0);
         broadcast.send(ws, action, requestId, r.success, r.success ? { item: r.item } : {}, r.error);
         if (r.success) pushGlobalState();
         break;
       }
 
-      // 停用/启用耗材（仅主管）
+      // 停用/启用耗材（主管/管理员）
       case 'INVENTORY_TOGGLE_ITEM': {
-        if (user?.role !== 'manager') {
-          broadcast.send(ws, action, requestId, false, {}, '仅主管可管理耗材');
+        if (!['manager','admin'].includes(user?.role)) {
+          broadcast.send(ws, action, requestId, false, {}, '仅主管和管理员可管理耗材');
           break;
         }
         const r = inventoryService.toggleItem(payload.itemId);
@@ -387,6 +387,41 @@ function handleMessage(ws, rawData) {
       case 'INVENTORY_BALANCE': {
         const r = inventoryService.checkBalance(payload.visitId);
         broadcast.send(ws, action, requestId, true, { balanced: r.balanced, unsettled: r.unsettled });
+        break;
+      }
+
+      // v4.1: 耗材调整（admin/manager）
+      case 'INVENTORY_ADJUST': {
+        if (!['manager','admin'].includes(user?.role)) {
+          broadcast.send(ws, action, requestId, false, {}, '仅主管和管理员可调整库存');
+          break;
+        }
+        const adj = inventoryService.adjustStock(payload.itemId, payload.delta, user?.id);
+        broadcast.send(ws, action, requestId, adj.success, adj.success ? { new_stock: adj.new_stock } : {}, adj.error);
+        if (adj.success) pushGlobalState();
+        break;
+      }
+
+      // v4.1: 耗材日志查询（admin/manager）
+      case 'INVENTORY_LOGS': {
+        if (!['manager','admin'].includes(user?.role)) {
+          broadcast.send(ws, action, requestId, false, {}, '仅主管和管理员可查看日志');
+          break;
+        }
+        const logs = inventoryService.getLogs(payload.itemId || null, payload.limit || 50);
+        broadcast.send(ws, action, requestId, true, { logs });
+        break;
+      }
+
+      // v4.1: 护士分配医助
+      case 'VISIT_ASSIGN_ASSISTANT': {
+        if (!['nurse','assistant','manager','admin'].includes(user?.role)) {
+          broadcast.send(ws, action, requestId, false, {}, '无权限分配医助');
+          break;
+        }
+        const aa = visitService.assignAssistant(payload.visitId, payload.assistantId);
+        broadcast.send(ws, action, requestId, aa.success, aa.success ? { visit: aa.visit } : {}, aa.error);
+        if (aa.success) pushGlobalState();
         break;
       }
 

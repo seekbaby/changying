@@ -39,6 +39,7 @@ CREATE TABLE visits (
     guest_name            TEXT    NOT NULL,
     guest_phone           TEXT,
     assigned_nurse_id     INTEGER REFERENCES staff(id),
+    assigned_assistant_id INTEGER REFERENCES staff(id),   -- ★ v4.1: 分配医助
     current_doctor_id     INTEGER REFERENCES staff(id),   -- ★ v2.5: 当前术中医生
     current_status        TEXT    NOT NULL,
     current_room_id       INTEGER REFERENCES rooms(id),
@@ -119,7 +120,7 @@ CREATE TABLE inventory_items (
 CREATE TABLE inventory_logs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id         INTEGER NOT NULL REFERENCES inventory_items(id),
-    type            TEXT    NOT NULL CHECK(type IN ('inbound','ordered','consumed')),
+    type            TEXT    NOT NULL CHECK(type IN ('inbound','ordered','consumed','adjust')),
     quantity        INTEGER NOT NULL,
     visit_id        INTEGER REFERENCES visits(id),   -- 关联接诊单（NULL=进货）
     operator_id     INTEGER REFERENCES staff(id),

@@ -17,9 +17,10 @@ class StateSnapshot {
     
     // 今日进行中接诊单
     const visits = db.prepare(`
-      SELECT v.*, s.name as nurse_name, sd.name as current_doctor_name
+      SELECT v.*, s.name as nurse_name, a.name as assistant_name, sd.name as current_doctor_name
       FROM visits v
       LEFT JOIN staff s ON v.assigned_nurse_id = s.id
+        LEFT JOIN staff a ON v.assigned_assistant_id = a.id
       LEFT JOIN staff sd ON v.current_doctor_id = sd.id
       WHERE v.visit_date = ? AND v.closed_at IS NULL
     `).all(today);
