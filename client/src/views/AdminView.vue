@@ -122,6 +122,21 @@
             </button>
           </div>
 
+          <!-- ★ v7.0: 快速新增房间 -->
+          <div class="quick-add-bar">
+            <input v-model="quickRoomName" class="quick-input" placeholder="房间名称" @keyup.enter="quickAddRoom" />
+            <select v-model="quickRoomType" class="quick-select">
+              <option value="">类型</option>
+              <option value="面诊间">面诊间</option>
+              <option value="拍照间">拍照间</option>
+              <option value="治疗间">治疗间</option>
+              <option value="休息区">休息区</option>
+              <option value="用餐区">用餐区</option>
+              <option value="其他">其他</option>
+            </select>
+            <button class="btn btn-sm btn-primary" @click="quickAddRoom" :disabled="!quickRoomName.trim()">＋ 快速新增</button>
+          </div>
+
           <div v-if="roomList.length === 0" class="empty-state">
             <p>暂无房间数据</p>
           </div>
@@ -498,12 +513,12 @@
               <div class="select-wrapper">
                 <select v-model="roomForm.type" class="form-select">
                   <option value="">通用</option>
-                  <option value="consultation">诊室</option>
-                  <option value="photo">拍照室</option>
-                  <option value="treatment">治疗室</option>
-                  <option value="operation">手术室</option>
-                  <option value="rest">休息室</option>
-                  <option value="dining">用餐区</option>
+                  <option value="面诊间">面诊间</option>
+                  <option value="拍照间">拍照间</option>
+                  <option value="治疗间">治疗间</option>
+                  <option value="休息区">休息区</option>
+                  <option value="用餐区">用餐区</option>
+                  <option value="其他">其他</option>
                 </select>
                 <span class="select-arrow">▾</span>
               </div>
@@ -659,6 +674,9 @@ const activeTab = ref('staff')
 // ========== Data ==========
 const staffList = ref([])
 const roomList = ref([])
+// ★ v7.0: 快速新增房间
+const quickRoomName = ref('')
+const quickRoomType = ref('')
 const auditLogs = ref([])
 const inventoryItems = ref([])       // v3.0 耗材列表
 const invInboundForm = ref({ itemId: null, qty: '', note: '' })  // 进货表单
@@ -891,6 +909,25 @@ function confirmDeleteStaff(staff) {
 }
 
 // ========== Room CRUD ==========
+// ★ v7.0: 快速新增房间（无需弹窗）
+async function quickAddRoom() {
+  const name = quickRoomName.value.trim()
+  if (!name) return
+  try {
+    await send('ADMIN_ROOM_CREATE', {
+      name,
+      type: quickRoomType.value || undefined,
+      capacity: 1,
+    })
+    quickRoomName.value = ''
+    quickRoomType.value = ''
+    showToast('房间已添加')
+    await fetchRoomList()
+  } catch (err) {
+    showToast(err.message || '添加失败', false)
+  }
+}
+
 function openRoomCreate() {
   editingRoom.value = null
   roomForm.name = ''
@@ -1521,6 +1558,22 @@ onMounted(() => {
   font-weight: 700;
   color: var(--text, #1e293b);
 }
+
+/* ★ v7.0: 快速新增 */
+.quick-add-bar {
+  display: flex; gap: 8px; margin-bottom: 12px; padding: 10px;
+  background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0;
+}
+.quick-input {
+  flex: 1; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px;
+  font-size: 13px; outline: none;
+}
+.quick-input:focus { border-color: #6366f1; }
+.quick-select {
+  padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px;
+  font-size: 13px; background: #fff;
+}
+.btn-sm { padding: 6px 12px; font-size: 13px; white-space: nowrap; }
 
 /* ========== Data Table ========== */
 .data-table {

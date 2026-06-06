@@ -211,6 +211,37 @@ function runMigrations() {
       CREATE INDEX idx_vrec_visit ON visit_recordings(visit_id);
     `);
   }
+
+  // ── ★ v7.0 fix: 移除 rooms.type 的 CHECK 约束（允许自定义房间类型）──
+  // SQLite 不支持 ALTER TABLE DROP CHECK，需重建表（幂等：检查现有表是否有 CHECK）
+  const hasOldCheck = db.prepare(`
+    SELECT sql FROM sqlite_master WHERE type='table' AND name='rooms'
+  `).get();
+  if (hasOldCheck && hasOldCheck.sql && hasOldCheck.sql.toLowerCase().includes('check')) {
+    console.log('[DB] 修复 v7.0: 移除 rooms.type CHECK 约束...');
+    try {
+      db.pragma('foreign_keys = OFF');
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS rooms_new (
+          id             INTEGER PRIMARY KEY AUTOINCREMENT,
+          name           TEXT    NOT NULL UNIQUE,
+          type           TEXT    NOT NULL,
+          capacity       INTEGER DEFAULT 1,
+          equipment_tags TEXT,
+          is_active      INTEGER DEFAULT 1,
+          sort_order     INTEGER DEFAULT 0
+        );
+        INSERT OR IGNORE INTO rooms_new SELECT id, name, type, capacity, equipment_tags, is_active, sort_order FROM rooms;
+        DROP TABLE IF EXISTS rooms;
+        ALTER TABLE rooms_new RENAME TO rooms;
+        CREATE INDEX IF NOT EXISTS idx_rooms_type ON rooms(type);
+      `);
+    } catch (e) {
+      console.warn('[DB] 房间类型迁移失败（可能已迁移）:', e.message);
+    } finally {
+      db.pragma('foreign_keys = ON');
+    }
+  }
 }
 
 module.exports = { db, initDatabase, DB_PATH };

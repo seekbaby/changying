@@ -236,12 +236,14 @@ function handleMessage(ws, rawData) {
       case 'ADMIN_STAFF_CREATE': {
         const staff = staffService.create(payload);
         broadcast.send(ws, action, requestId, true, { staff });
+        pushGlobalState();
         break;
       }
 
       case 'ADMIN_STAFF_UPDATE': {
         const staff = staffService.update(payload.staffId, payload);
         broadcast.send(ws, action, requestId, true, { staff });
+        pushGlobalState();
         break;
       }
 
@@ -266,6 +268,7 @@ function handleMessage(ws, rawData) {
         const roomService = require('../services/room.service');
         const room = roomService.create(payload);
         broadcast.send(ws, action, requestId, true, { room });
+        pushGlobalState();
         break;
       }
 
@@ -273,6 +276,7 @@ function handleMessage(ws, rawData) {
         const roomService = require('../services/room.service');
         const room = roomService.update(payload.roomId, payload);
         broadcast.send(ws, action, requestId, true, { room });
+        pushGlobalState();
         break;
       }
 

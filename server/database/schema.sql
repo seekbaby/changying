@@ -24,7 +24,7 @@ CREATE INDEX idx_staff_role ON staff(role);
 CREATE TABLE rooms (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     name           TEXT    NOT NULL UNIQUE,
-    type           TEXT    NOT NULL CHECK(type IN ('consultation','treatment','recovery','dining','waiting')),
+    type           TEXT    NOT NULL,
     capacity       INTEGER DEFAULT 1,
     equipment_tags TEXT,
     is_active      INTEGER DEFAULT 1,
