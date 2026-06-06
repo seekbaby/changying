@@ -1,0 +1,48 @@
+# ============================================================
+# 长盈 7.0 — 飞牛NAS一键部署 (使用 ghcr.io 公开镜像)
+# 用法: 
+#   1. 在 NAS Docker UI 中创建项目，粘贴此文件内容
+#   2. 修改下方 environment 中的 API Key
+#   3. docker compose up -d
+# ============================================================
+
+services:
+  changying:
+    image: ghcr.io/seekbaby/changying:latest
+    container_name: changying
+    ports:
+      - "3000:3000"
+    volumes:
+      - changying_data:/app/data
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=3000
+      - DB_DIR=/app/data
+      # ═══ v7.0 API Keys（请替换为实际值）═══
+      - OSS_REGION=oss-cn-shanghai
+      - OSS_ACCESS_KEY_ID=LTAI5tAFbkRrRVNnTSwxuZAH
+      - OSS_ACCESS_KEY_SECRET=pHF6mVCHRuntOUGqmUoZJRUvVX0SL
+      - OSS_BUCKET=cy4
+      - VOLCENGINE_APP_ID=9501334674
+      - VOLCENGINE_TOKEN=y-fyQ7KRwmCm1H1Zhq74gquS3OY_wR0b
+      - DEEPSEEK_API_KEY=sk-390367dae5e7418e8c38ab1e18860431
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ═══ 自动更新容器（Watchtower）═══
+  watchtower:
+    image: containrrr/watchtower
+    container_name: changying_watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 60 --cleanup changying
+    restart: unless-stopped
+
+volumes:
+  changying_data:
+    name: changying_data

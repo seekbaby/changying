@@ -334,6 +334,15 @@ class VisitService {
       Date.now()
     );
   }
+
+  /** v4.1: 分配医助（一次性绑定，已绑定则拒绝） */
+  assignAssistant(visitId, assistantId) {
+    const visit = db.prepare('SELECT * FROM visits WHERE id = ?').get(visitId);
+    if (!visit) return { success: false, error: '接诊单不存在' };
+    if (visit.assigned_assistant_id) return { success: false, error: '已绑定医助，当日不可修改' };
+    db.prepare('UPDATE visits SET assigned_assistant_id = ? WHERE id = ?').run(assistantId || null, visitId);
+    return { success: true };
+  }
 }
 
 module.exports = new VisitService();

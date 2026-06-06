@@ -9,6 +9,7 @@
     "init-db": "node database/init.js"
   },
   "dependencies": {
+    "ali-oss": "^6.23.0",
     "better-sqlite3": "^11.0.0",
     "express": "^4.21.0",
     "multer": "^2.1.1",

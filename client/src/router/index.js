@@ -7,6 +7,7 @@ const routes = [
   { path: '/admin',      name: 'Admin',    component: () => import('../views/AdminView.vue') },
   { path: '/dashboard',  name: 'Dashboard',component: () => import('../views/DashboardView.vue') },  // v3.0
   { path: '/inventory',  name: 'Inventory',component: () => import('../views/InventoryView.vue') },  // v3.0 实时库存
+  { path: '/reports',    name: 'Reports',  component: () => import('../views/ReportListView.vue') },  // v4.0
 ]
 
 const router = createRouter({

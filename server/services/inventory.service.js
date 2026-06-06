@@ -36,7 +36,7 @@ class InventoryService {
     return items;
   }
 
-  /** 创建耗材 */
+  /** 创建耗材（支持初始库存） */
   createItem(name, unit = '支', safetyStock = 5, initialStock = 0) {
     const exists = db.prepare('SELECT id FROM inventory_items WHERE name = ?').get(name);
     if (exists) return { success: false, error: '耗材名称已存在' };
@@ -183,7 +183,53 @@ class InventoryService {
     return { success: true, results };
   }
 
-  // ══════ 5. 查询 ══════
+  // ══════ 5. 库存调整（主管/管理员） ══════
+
+  /** 调整库存——事务保护+静默日志（不可修改） */
+  adjustStock(itemId, delta, operatorId) {
+    if (!delta || delta === 0) return { success: false, error: '调整量不能为0' };
+    const item = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(itemId);
+    if (!item) return { success: false, error: '耗材不存在' };
+
+    const newStock = item.current_stock + delta;
+    if (newStock < 0) return { success: false, error: `库存不足（当前 ${item.current_stock}，调整 ${delta}）` };
+
+    const now = Date.now();
+    const runAdj = db.transaction(() => {
+      db.prepare('UPDATE inventory_items SET current_stock = ? WHERE id = ?').run(newStock, itemId);
+      db.prepare(`
+        INSERT INTO inventory_logs (item_id, type, quantity, operator_id, note, created_at)
+        VALUES (?, 'inbound', ?, ?, ?, ?)
+      `).run(itemId, delta, operatorId, `[调整] ${delta > 0 ? '+' : ''}${delta}（原库存${item.current_stock}→${newStock}）`, now);
+    });
+    runAdj();
+    return { success: true, new_stock: newStock, delta };
+  }
+
+  /** 查询操作日志（仅 admin/manager 可调） */
+  getLogs(itemId, limit = 100) {
+    let sql;
+    const params = [];
+    if (itemId) {
+      sql = `SELECT il.*, s.name as operator_name, ii.name as item_name
+             FROM inventory_logs il
+             JOIN inventory_items ii ON il.item_id = ii.id
+             LEFT JOIN staff s ON il.operator_id = s.id
+             WHERE il.item_id = ?
+             ORDER BY il.created_at DESC LIMIT ?`;
+      params.push(itemId, limit);
+    } else {
+      sql = `SELECT il.*, s.name as operator_name, ii.name as item_name
+             FROM inventory_logs il
+             JOIN inventory_items ii ON il.item_id = ii.id
+             LEFT JOIN staff s ON il.operator_id = s.id
+             ORDER BY il.created_at DESC LIMIT ?`;
+      params.push(limit);
+    }
+    return db.prepare(sql).all(...params);
+  }
+
+  // ══════ 6. 查询 ══════
 
   /** 获取某顾客的耗材明细 */
   getVisitInventory(visitId) {
@@ -219,38 +265,6 @@ class InventoryService {
         diff: r.qty_ordered - (r.qty_verified || 0)
       }))
     };
-  }
-  adjustStock(itemId, delta, operatorId) {
-    if (!delta || delta === 0) return { success: false, error: '调整量不能为0' };
-    const item = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(itemId);
-    if (!item) return { success: false, error: '耗材不存在' };
-    const newStock = item.current_stock + delta;
-    if (newStock < 0) return { success: false, error: '库存不足，无法扣减' };
-    const now = Date.now();
-    const runAdj = db.transaction(() => {
-      db.prepare('UPDATE inventory_items SET current_stock = ? WHERE id = ?').run(newStock, itemId);
-      db.prepare(`INSERT INTO inventory_logs (item_id, type, quantity, operator_id, note, created_at)
-        VALUES (?, 'adjust', ?, ?, ?, ?)`).run(itemId, delta, operatorId, `库存调整 ${delta>0?'+'+delta:delta}`, now);
-    });
-    runAdj();
-    return { success: true, new_stock: newStock };
-  }
-
-  /** 查询耗材操作日志 */
-  getLogs(itemId, limit = 50) {
-    const sql = itemId
-      ? `SELECT l.*, s.name as operator_name, i.name as item_name
-         FROM inventory_logs l
-         LEFT JOIN staff s ON l.operator_id = s.id
-         LEFT JOIN inventory_items i ON l.item_id = i.id
-         WHERE l.item_id = ?
-         ORDER BY l.created_at DESC LIMIT ?`
-      : `SELECT l.*, s.name as operator_name, i.name as item_name
-         FROM inventory_logs l
-         LEFT JOIN staff s ON l.operator_id = s.id
-         LEFT JOIN inventory_items i ON l.item_id = i.id
-         ORDER BY l.created_at DESC LIMIT ?`;
-    return db.prepare(sql).all(...(itemId ? [itemId, limit] : [limit]));
   }
 }
 

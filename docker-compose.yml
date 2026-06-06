@@ -1,14 +1,18 @@
 # ============================================================
-# 长盈 v3 — Docker Compose + Watchtower 自动更新
-# 飞牛NAS通用：一次部署，后续全自动
-# 镜像源：ghcr.io（GitHub Container Registry，公开免密拉取）
+# 长盈 7.0 — Docker Compose 一键部署
+# 用法: docker compose up -d
 # ============================================================
 
 services:
   changying:
-    image: ghcr.io/seekbaby/changying:latest
+    image: changying:7.0
     container_name: changying
-    pull_policy: always
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/arm64
+        - linux/amd64
     ports:
       - "3000:3000"
     volumes:
@@ -18,18 +22,12 @@ services:
       - TZ=Asia/Shanghai
       - PORT=3000
       - DB_DIR=/app/data
-      - BAILIAN_API_KEY=sk-f363d6e4ea3c4a80962e4c42b04074cf
-      - DEEPSEEK_API_KEY=sk-390367dae5e7418e8c38ab1e18860431
-      - PUBLIC_BASE_URL=https://magicreviewbox.com
-
-  # Watchtower 每60秒检查 ghcr.io 镜像更新，自动重建
-  watchtower:
-    image: containrrr/watchtower:latest
-    container_name: changying-watchtower
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: --interval 60 --cleanup changying
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   changying_data:

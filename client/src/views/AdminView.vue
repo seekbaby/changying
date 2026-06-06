@@ -328,8 +328,7 @@
             <div class="form-row">
               <input v-model="invNewItemForm.name" class="form-input" placeholder="耗材名称" />
               <input v-model="invNewItemForm.unit" class="form-input" placeholder="单位" style="width:80px" />
-              <input v-model.number="invNewItemForm.stock" class="form-input" type="number" placeholder="库存" style="width:80px" min="0" />
-              <input v-model.number="invNewItemForm.safetyStock" class="form-input" type="number" placeholder="安全库存" style="width:80px" min="0" />
+              <input v-model.number="invNewItemForm.stock" class="form-input" type="number" placeholder="数量" style="width:80px" min="0" />
               <button class="btn btn-primary" @click="doCreateItem" :disabled="!invNewItemForm.name.trim()">创建</button>
             </div>
           </div>
@@ -342,41 +341,15 @@
                 <td :class="{ 'stock-low': item.available <= item.safety_stock }">{{ item.available }}</td>
                 <td>{{ item.locked }}</td>
                 <td><span :class="item.is_active ? 'badge-active' : 'badge-inactive'">{{ item.is_active ? '启用' : '停用' }}</span></td>
-                <td>
+                <td style="display:flex;gap:4px;flex-wrap:wrap">
                   <button class="btn btn-outline btn-sm" @click="doToggleItem(item.id)">{{ item.is_active ? '停用' : '启用' }}</button>
-                  <button class="btn btn-outline btn-sm" @click="openAdjust(item)" style="margin-left:4px">调整</button>
-                  <button class="btn btn-outline btn-sm" @click="showLogs(item.id)" style="margin-left:4px">日志</button>
+                  <button class="btn btn-outline btn-sm" @click="openAdjust(item)" :disabled="!item.is_active" style="color:#f59e0b;border-color:#f59e0b">调整</button>
+                  <button class="btn btn-outline btn-sm" @click="openLogs(item)" style="color:#6366f1;border-color:#6366f1">日志</button>
                 </td>
               </tr>
             </tbody>
           </table>
           <p v-else class="empty-hint">暂无耗材记录</p>
-
-          <!-- v4.1: 库存调整弹窗 -->
-          <div v-if="showAdjustModal" class="modal-mask" @click.self="showAdjustModal=false">
-            <div class="modal-card">
-              <h4>调整库存 · {{ adjustItem?.name }}</h4>
-              <p style="font-size:13px;color:#64748b">当前库存: {{ adjustItem?.current_stock }}</p>
-              <div class="form-row" style="margin:8px 0">
-                <input v-model.number="adjustDelta" class="form-input" type="number" placeholder="调整量(+进-出)" style="width:140px" />
-                <button class="btn btn-primary" @click="doAdjust" :disabled="!adjustDelta || adjustDelta===0">确认调整</button>
-              </div>
-              <button class="btn btn-outline btn-sm" @click="showAdjustModal=false">取消</button>
-            </div>
-          </div>
-
-          <!-- v4.1: 日志弹窗 -->
-          <div v-if="showLogsModal" class="modal-mask" @click.self="showLogsModal=false">
-            <div class="modal-card" style="max-height:70vh;overflow-y:auto">
-              <h4>📋 耗材操作日志</h4>
-              <table class="data-table" v-if="invLogs.length"><thead><tr><th>时间</th><th>耗材</th><th>操作</th><th>数量</th><th>操作人</th><th>备注</th></tr></thead>
-              <tbody><tr v-for="l in invLogs" :key="l.id">
-                <td>{{ fmtTs(l.created_at) }}</td><td>{{ l.item_name }}</td><td>{{ l.type }}</td><td>{{ l.quantity }}</td><td>{{ l.operator_name||'--' }}</td><td>{{ l.note }}</td>
-              </tr></tbody></table>
-              <p v-else class="empty-hint">暂无日志</p>
-              <button class="btn btn-outline btn-sm" @click="showLogsModal=false" style="margin-top:8px">关闭</button>
-            </div>
-          </div>
 
           <div class="section-toolbar" style="margin-top:20px"><h3 class="section-title">进货入库</h3></div>
           <div class="inv-form-card">
@@ -597,6 +570,57 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- v4.1: 库存调整 Modal -->
+    <Teleport to="body" v-if="showAdjustModal">
+      <div class="modal-overlay" @click.self="showAdjustModal = false">
+        <div class="modal-dialog modal-sm">
+          <div class="modal-header">
+            <h3>库存调整 — {{ adjustTarget?.name }}</h3>
+            <button class="modal-close" @click="showAdjustModal = false">✕</button>
+          </div>
+          <div class="modal-body">
+            <p class="modal-desc">当前库存: <strong>{{ adjustTarget?.current_stock }}</strong></p>
+            <div class="form-group">
+              <label>调整量（正数为入库，负数为出库）</label>
+              <input v-model.number="adjustDelta" class="form-input" type="number" placeholder="例: +5 或 -3" />
+            </div>
+            <div class="form-group">
+              <label>备注</label>
+              <input v-model="adjustNote" class="form-input" placeholder="调整原因（可选）" />
+            </div>
+            <button class="btn btn-primary" @click="doAdjust" :disabled="!adjustDelta">确认调整</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- v4.1: 操作日志 Modal -->
+    <Teleport to="body" v-if="showLogsModal">
+      <div class="modal-overlay" @click.self="showLogsModal = false">
+        <div class="modal-dialog" style="max-width:600px">
+          <div class="modal-header">
+            <h3>📋 操作日志 — {{ logTargetName }}</h3>
+            <button class="modal-close" @click="showLogsModal = false">✕</button>
+          </div>
+          <div class="modal-body" style="max-height:400px;overflow-y:auto">
+            <p v-if="logItems.length === 0" class="empty-hint">暂无操作记录</p>
+            <table class="data-table" v-else>
+              <thead><tr><th>时间</th><th>操作类型</th><th>数量</th><th>操作人</th><th>备注</th></tr></thead>
+              <tbody>
+                <tr v-for="log in logItems" :key="log.id">
+                  <td>{{ new Date(log.created_at).toLocaleString('zh-CN') }}</td>
+                  <td>{{ fmtLogType(log.type, log.note) }}</td>
+                  <td :style="{color: log.quantity > 0 ? '#16a34a' : '#dc2626'}">{{ log.quantity > 0 ? '+' : '' }}{{ log.quantity }}</td>
+                  <td>{{ log.operator_name || '--' }}</td>
+                  <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">{{ log.note }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -608,7 +632,7 @@ import { useWebSocket } from '../composables/useWebSocket'
 
 const router = useRouter()
 const auth = useAuthStore()
-const { send } = useWebSocket()
+const { send, connected } = useWebSocket()
 
 // ========== Password Gate ==========
 const authenticated = ref(false)
@@ -638,19 +662,22 @@ const roomList = ref([])
 const auditLogs = ref([])
 const inventoryItems = ref([])       // v3.0 耗材列表
 const invInboundForm = ref({ itemId: null, qty: '', note: '' })  // 进货表单
-const invNewItemForm = ref({ name: '', unit: '支', stock: 0, safetyStock: 5 })  // 新增耗材表单
+const invNewItemForm = ref({ name: '', unit: '支', stock: 0 })  // 新增耗材表单
 const showInvNewItem = ref(false)    // v3.0
 const inventoryLoading = ref(false)  // v3.0
 const invFileInput = ref(null)       // v3.0 Excel导入
 const invImportResults = ref([])     // v3.0
 const invImportSummary = ref({})     // v3.0
 const invImportError = ref('')       // v3.0
-const showAdjustModal = ref(false)   // v4.1 库存调整
-const adjustItem = ref(null)
+// v4.1: 库存调整
+const showAdjustModal = ref(false)
+const adjustTarget = ref(null)
 const adjustDelta = ref(0)
-const showLogsModal = ref(false)     // v4.1 日志
-const invLogs = ref([])
-const logItemId = ref(null)
+const adjustNote = ref('')
+// v4.1: 日志
+const showLogsModal = ref(false)
+const logItems = ref([])
+const logTargetName = ref('')
 const auditLoading = ref(false)
 
 // ========== Import ==========
@@ -1130,10 +1157,10 @@ async function doCreateItem() {
   const f = invNewItemForm.value
   if (!f.name.trim()) return
   try {
-    const res = await send('INVENTORY_CREATE_ITEM', { name: f.name.trim(), unit: f.unit || '支', safetyStock: f.safetyStock || 5, initialStock: f.stock || 0 })
+    const res = await send('INVENTORY_CREATE_ITEM', { name: f.name.trim(), unit: f.unit || '支', safetyStock: 5, initialStock: f.stock || 0 })
     if (res.success) {
-      showToast(`耗材「${f.name}」创建成功（库存:${f.stock||0}）`)
-      invNewItemForm.value = { name: '', unit: '支', stock: 0, safetyStock: 5 }
+      showToast(`耗材「${f.name}」创建成功`)
+      invNewItemForm.value = { name: '', unit: '支', stock: 0 }
       showInvNewItem.value = false
       await loadInventory()
     } else showToast(res.error || '创建失败', false)
@@ -1154,33 +1181,40 @@ async function doInbound() {
   } catch(e) { showToast(e.message, false) }
 }
 
-function openAdjust(item) { adjustItem.value = item; adjustDelta.value = 0; showAdjustModal.value = true }
-
+// v4.1: 库存调整
+function openAdjust(item) {
+  adjustTarget.value = item
+  adjustDelta.value = 0
+  adjustNote.value = ''
+  showAdjustModal.value = true
+}
 async function doAdjust() {
-  if (!adjustDelta.value || adjustDelta.value === 0) return
+  if (!adjustDelta.value || adjustDelta.value === 0) {
+    showToast('调整量不能为0', false); return
+  }
   try {
-    const res = await send('INVENTORY_ADJUST', { itemId: adjustItem.value.id, delta: adjustDelta.value })
+    const res = await send('INVENTORY_ADJUST', { itemId: adjustTarget.value.id, delta: adjustDelta.value })
     if (res.success) {
-      showToast(`${adjustItem.value.name} 调整 ${adjustDelta.value>0?'+':''}${adjustDelta.value} 成功`)
+      showToast(`${adjustTarget.value.name} ${adjustDelta.value > 0 ? '+' : ''}${adjustDelta.value}（库存 ${res.payload.new_stock}）`)
       showAdjustModal.value = false
       await loadInventory()
     } else showToast(res.error || '调整失败', false)
   } catch(e) { showToast(e.message, false) }
 }
 
-async function showLogs(itemId) {
-  logItemId.value = itemId
+// v4.1: 操作日志
+async function openLogs(item) {
+  logTargetName.value = item.name
   try {
-    const res = await send('INVENTORY_LOGS', { itemId, limit: 50 })
-    if (res.success) { invLogs.value = res.payload.logs || []; showLogsModal.value = true }
-    else showToast(res.error || '查询失败', false)
+    const res = await send('INVENTORY_LOGS', { itemId: item.id, limit: 50 })
+    logItems.value = res.success ? (res.payload.logs || []) : []
+    showLogsModal.value = true
   } catch(e) { showToast(e.message, false) }
 }
-
-function fmtTs(ts) {
-  if (!ts) return ''
-  const d = new Date(ts)
-  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+function fmtLogType(t, note) {
+  if (note && note.startsWith('[调整]')) return '库存调整'
+  const map = { inbound: '进货', ordered: '开单', consumed: '核销' }
+  return map[t] || t
 }
 
 async function doToggleItem(itemId) {
@@ -1234,6 +1268,11 @@ async function handleImportFile(e) {
 
 // Reload inventory when switching to inventory tab
 watch(activeTab, (tab) => { if (tab === 'inventory') loadInventory() })
+
+// ★ v4.1: WS 就绪后再拉库存（解决 DashboardView 同款时序陷阱）
+watch(connected, (val) => {
+  if (val) setTimeout(() => { if (activeTab.value === 'inventory') loadInventory() }, 500)
+}, { immediate: true })
 
 // ★ v3.0: 主管默认激活耗材管理 tab
 watch(tabs, (newTabs) => {
@@ -2008,8 +2047,6 @@ onMounted(() => {
 
 /* v3.0 Inventory */
 .inv-form-card { background: var(--card-bg, #f8fafc); border: 1px solid var(--border, #e2e8f0); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
-.modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.modal-card { background: #fff; border-radius: 12px; padding: 20px; min-width: 320px; max-width: 600px; width: 90vw; }
 .form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .badge-active { background: #dcfce7; color: #16a34a; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
 .badge-inactive { background: #f1f5f9; color: #94a3b8; font-size: 11px; padding: 2px 8px; border-radius: 10px; }
