@@ -1,6 +1,6 @@
 services:
   changying:
-    image: ghcr.io/seekbaby/changying:latest
+    image: crpi-008b5xi3tkipemdi.cn-shanghai.personal.cr.aliyuncs.com/changying/changying-server:latest
     container_name: changying
     ports:
       - "3000:3000"
