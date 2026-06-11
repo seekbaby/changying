@@ -7,8 +7,6 @@ services:
     volumes:
       - changying_data:/app/data
     restart: unless-stopped
-    env_file:
-      - .env.nas
     environment:
       - TZ=Asia/Shanghai
       - PORT=3000

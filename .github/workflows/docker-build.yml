@@ -54,5 +54,7 @@ jobs:
             ${{ env.GH_REGISTRY }}/${{ env.GH_IMAGE }}:${{ github.sha }}
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_IMAGE }}:latest
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_IMAGE }}:${{ github.sha }}
+          build-args: |
+            DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
