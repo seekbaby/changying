@@ -8,6 +8,7 @@ server/public/templates/
 data/
 .env
 .env.nas
+.env.local
 *.log
 /tmp/
 .DS_Store

@@ -175,10 +175,11 @@ class VisitService {
     return { success: true };
   }
 
-  // ── v4.1: 护士分配医助 ──
+  /** v4.1: 分配医助（一次性绑定，已绑定则拒绝） */
   assignAssistant(visitId, assistantId) {
     const visit = db.prepare('SELECT * FROM visits WHERE id = ?').get(visitId);
     if (!visit) return { success: false, error: '接诊单不存在' };
+    if (visit.assigned_assistant_id) return { success: false, error: '已绑定医助，当日不可修改' };
     db.prepare('UPDATE visits SET assigned_assistant_id = ? WHERE id = ?').run(assistantId || null, visitId);
     const updated = db.prepare(`
       SELECT v.*, s.name as nurse_name, a.name as assistant_name
@@ -187,6 +188,7 @@ class VisitService {
       LEFT JOIN staff a ON v.assigned_assistant_id = a.id
       WHERE v.id = ?
     `).get(visitId);
+    snapshot.refresh();
     return { success: true, visit: updated };
   }
 
@@ -254,12 +256,13 @@ class VisitService {
         ORDER BY v.visit_date DESC, v.created_at DESC
       `).all(`%${trimmed}%`);
     } else {
-      // ★ v3.0: 空 name → 返回所有顾客的全部历史
+      // ★ v3.0: 空 name → 返回所有顾客的全部历史（限制最多200条，防止大数据量卡死进程）
       visits = db.prepare(`
         SELECT v.*, s.name as nurse_name
         FROM visits v
         LEFT JOIN staff s ON v.assigned_nurse_id = s.id
         ORDER BY v.guest_name, v.visit_date DESC, v.created_at DESC
+        LIMIT 200
       `).all();
     }
 
@@ -335,14 +338,7 @@ class VisitService {
     );
   }
 
-  /** v4.1: 分配医助（一次性绑定，已绑定则拒绝） */
-  assignAssistant(visitId, assistantId) {
-    const visit = db.prepare('SELECT * FROM visits WHERE id = ?').get(visitId);
-    if (!visit) return { success: false, error: '接诊单不存在' };
-    if (visit.assigned_assistant_id) return { success: false, error: '已绑定医助，当日不可修改' };
-    db.prepare('UPDATE visits SET assigned_assistant_id = ? WHERE id = ?').run(assistantId || null, visitId);
-    return { success: true };
-  }
+  /** v4.1: 分配医助（一次性绑定，已绑定则拒绝） - 见上方统一实现 */
 }
 
 module.exports = new VisitService();

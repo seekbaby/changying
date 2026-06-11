@@ -10,7 +10,7 @@ const { db } = require('../database/init');
 // ═══════════════════════════════════════════
 // 配置
 // ═══════════════════════════════════════════
-const BAILIAN_API_KEY = process.env.BAILIAN_API_KEY || 'sk-f363d6e4ea3c4a80962e4c42b04074cf';
+const BAILIAN_API_KEY = process.env.BAILIAN_API_KEY || '';
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 const PUBLIC_BASE = process.env.PUBLIC_BASE_URL || 'https://magicreviewbox.com';
