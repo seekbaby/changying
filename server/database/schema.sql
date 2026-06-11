@@ -153,6 +153,7 @@ CREATE TABLE visit_recordings (
     duration_sec    REAL,
     transcript      TEXT    DEFAULT '',        -- 百炼ASR转写文本
     report_json     TEXT    DEFAULT '{}',      -- DeepSeek分析报告(JSON)
+    transcript_oss_key TEXT,                  -- v7.1: OSS转写文档路径
     status          TEXT    DEFAULT 'uploaded' CHECK(status IN ('uploaded','transcribing','transcribed','analyzing','completed','failed')),
     error_message   TEXT,
     created_at      INTEGER NOT NULL
