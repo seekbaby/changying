@@ -74,7 +74,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useWebSocket } from '../composables/useWebSocket'
 
 const props = defineProps({
@@ -100,12 +100,34 @@ async function loadRecordings() {
 
 onMounted(loadRecordings)
 
-// 轮询进行中的录音
+// ★ 组件销毁时清除轮询定时器，防止定时器泄露堆叠
+onUnmounted(() => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+})
+
+// 轮询进行中的录音（最多轮询 10 分钟，防止异常状态永久轮询）
 let pollTimer = null
+let pollCount = 0
+const MAX_POLL_COUNT = 200  // 3秒 × 200 = 600秒 = 10分钟硬上限
+
 watch(recordings, (list) => {
   const hasPending = list.some(r => ['uploaded','transcribing','analyzing'].includes(r.status))
   if (hasPending && !pollTimer) {
-    pollTimer = setInterval(loadRecordings, 3000)
+    pollCount = 0
+    pollTimer = setInterval(() => {
+      pollCount++
+      if (pollCount >= MAX_POLL_COUNT) {
+        // ★ 安全锁：轮询超过 10 分钟，停止轮询，避免因 status 永久卡死导致无限请求
+        console.warn('[Rec] 轮询超时（10分钟），停止自动刷新，请手动刷新页面')
+        clearInterval(pollTimer)
+        pollTimer = null
+        return
+      }
+      loadRecordings()
+    }, 3000)
   } else if (!hasPending && pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null

@@ -222,40 +222,89 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 /**
  * 3. 调用 DeepSeek V4 Pro 分析
+ *
+ * 安全锁：
+ * - 幂等检查：status 不为 'transcribed' 则拒绝执行，防止重复分析
+ * - 内部 try/catch：任何异常都保证写入 failed，status 不会永久卡在 analyzing
+ * - transcript 长度硬限：防止意外的超大上下文轰炸 API
  */
 async function analyzeWithDeepSeek(recordingId, transcript) {
   if (!DEEPSEEK_API_KEY) {
     return { success: false, error: '未配置 DEEPSEEK_API_KEY 环境变量' };
   }
 
-  db.prepare('UPDATE visit_recordings SET status = ? WHERE id = ?').run('analyzing', recordingId);
+  // ★ 安全锁 1：幂等检查——只允许从 transcribed 状态进入，防止重复触发
+  const current = db.prepare('SELECT status FROM visit_recordings WHERE id = ?').get(recordingId);
+  if (!current) {
+    return { success: false, error: `录音 #${recordingId} 不存在` };
+  }
+  if (current.status !== 'transcribed') {
+    console.warn(`[DeepSeek] #${recordingId} 状态为 "${current.status}"，跳过分析（防重复触发）`);
+    return { success: false, error: `状态不符，拒绝分析（当前: ${current.status}）` };
+  }
 
-  const resp = await httpPost(
-    'https://api.deepseek.com/v1/chat/completions',
-    { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
-    {
-      model: DEEPSEEK_MODEL,
-      messages: [
-        { role: 'system', content: ANALYSIS_PROMPT },
-        { role: 'user', content: `以下是面诊录音转写文本，请按指令进行审计分析：\n\n${transcript}` }
-      ],
-      temperature: 0.3,
-      max_tokens: 1500
-    }
-  );
-
-  if (resp.status !== 200) {
-    const err = `DeepSeek分析失败: ${JSON.stringify(resp.data)}`;
+  // ★ 安全锁 2：transcript 长度硬限（超过 8 万字符视为异常，拒绝发送）
+  const MAX_TRANSCRIPT_CHARS = 80000;
+  if (!transcript || transcript.length === 0) {
+    const err = '转写文本为空，跳过分析';
+    db.prepare('UPDATE visit_recordings SET status = ?, error_message = ? WHERE id = ?')
+      .run('failed', err, recordingId);
+    return { success: false, error: err };
+  }
+  if (transcript.length > MAX_TRANSCRIPT_CHARS) {
+    const err = `转写文本超限（${transcript.length} 字符 > ${MAX_TRANSCRIPT_CHARS}），已截断分析请求`;
+    console.error(`[DeepSeek] #${recordingId} ${err}`);
     db.prepare('UPDATE visit_recordings SET status = ?, error_message = ? WHERE id = ?')
       .run('failed', err, recordingId);
     return { success: false, error: err };
   }
 
-  const report = resp.data?.choices?.[0]?.message?.content || '';
-  db.prepare('UPDATE visit_recordings SET status = ?, report_json = ? WHERE id = ?')
-    .run('completed', report, recordingId);
+  db.prepare('UPDATE visit_recordings SET status = ? WHERE id = ?').run('analyzing', recordingId);
 
-  return { success: true, report };
+  try {
+    const resp = await httpPost(
+      'https://api.deepseek.com/v1/chat/completions',
+      { 'Authorization': `Bearer ${DEEPSEEK_API_KEY}` },
+      {
+        model: DEEPSEEK_MODEL,
+        messages: [
+          { role: 'system', content: ANALYSIS_PROMPT },
+          { role: 'user', content: `以下是面诊录音转写文本，请按指令进行审计分析：\n\n${transcript}` }
+        ],
+        temperature: 0.3,
+        max_tokens: 1500
+      }
+    );
+
+    if (resp.status !== 200) {
+      const err = `DeepSeek分析失败 (HTTP ${resp.status}): ${JSON.stringify(resp.data)}`;
+      db.prepare('UPDATE visit_recordings SET status = ?, error_message = ? WHERE id = ?')
+        .run('failed', err, recordingId);
+      return { success: false, error: err };
+    }
+
+    const report = resp.data?.choices?.[0]?.message?.content || '';
+    if (!report) {
+      const err = 'DeepSeek 返回内容为空';
+      db.prepare('UPDATE visit_recordings SET status = ?, error_message = ? WHERE id = ?')
+        .run('failed', err, recordingId);
+      return { success: false, error: err };
+    }
+
+    db.prepare('UPDATE visit_recordings SET status = ?, report_json = ? WHERE id = ?')
+      .run('completed', report, recordingId);
+
+    console.log(`[DeepSeek] #${recordingId} 分析完成，报告长度: ${report.length} 字符`);
+    return { success: true, report };
+
+  } catch (e) {
+    // ★ 安全锁 3：任何网络/解析异常都保证写入 failed，防止 status 永久卡在 analyzing
+    const err = `DeepSeek分析异常: ${e.message}`;
+    console.error(`[DeepSeek] #${recordingId}`, err);
+    db.prepare('UPDATE visit_recordings SET status = ?, error_message = ? WHERE id = ?')
+      .run('failed', err, recordingId);
+    return { success: false, error: err };
+  }
 }
 
 /**

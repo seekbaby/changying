@@ -7,17 +7,12 @@ services:
     volumes:
       - changying_data:/app/data
     restart: unless-stopped
+    env_file:
+      - .env.nas
     environment:
       - TZ=Asia/Shanghai
       - PORT=3000
       - DB_DIR=/app/data
-      - OSS_REGION=oss-cn-shanghai
-      - OSS_ACCESS_KEY_ID=LTAI5tAFbkRrRVNnTSwxuZAH
-      - OSS_ACCESS_KEY_SECRET=pHF6mVCHRuntOUGqmUoZJRUvVX0SL
-      - OSS_BUCKET=cy4
-      - VOLCENGINE_APP_ID=9501334674
-      - VOLCENGINE_TOKEN=y-fyQ7KRwmCm1H1Zhq74gquS3OY_wR0b
-      - DEEPSEEK_API_KEY=sk-390367dae5e7418e8c38ab1e18860431
 
   watchtower:
     image: containrrr/watchtower

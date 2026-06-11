@@ -7,6 +7,7 @@ server/public/templates/
 *.sqlite
 data/
 .env
+.env.nas
 *.log
 /tmp/
 .DS_Store
