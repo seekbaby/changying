@@ -134,26 +134,56 @@ watch(recordings, (list) => {
   }
 }, { deep: true })
 
-// 文件上传
+// 文件上传 — 前端直传 OSS
 async function onFileSelected(e) {
   const file = e.target.files[0]
   if (!file) return
 
   uploading.value = true
   try {
-    const form = new FormData()
-    form.append('recording', file)
-    form.append('visitId', props.visitId)
-    form.append('guestName', props.guestName)
+    // 1. 获取 OSS Policy
+    const pRes = await fetch('/api/recordings/oss-policy')
+    const pData = await pRes.json()
+    if (!pData.success) throw new Error('获取上传凭证失败')
 
-    const resp = await fetch('/api/recordings/upload', { method: 'POST', body: form })
-    const data = await resp.json()
+    const { host, ossObjectName, OSSAccessKeyId, policy, signature } = pData.policy
 
-    if (data.success) {
-      setTimeout(loadRecordings, 1000)
-    } else {
-      alert('上传失败: ' + (data.error || '未知错误'))
-    }
+    // 2. 直传 OSS — 仅必要字段
+    await new Promise((resolve, reject) => {
+      const fd = new FormData()
+      fd.append('key', ossObjectName)
+      fd.append('policy', policy)
+      fd.append('OSSAccessKeyId', OSSAccessKeyId)
+      fd.append('signature', signature)
+      fd.append('success_action_status', '200')
+      fd.append('file', file)
+
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', host)
+      xhr.onload = () => {
+        if (xhr.status === 200 || xhr.status === 204) resolve()
+        else reject(new Error(`OSS 上传失败 (${xhr.status})`))
+      }
+      xhr.onerror = () => reject(new Error('OSS 网络错误'))
+      xhr.send(fd)
+    })
+
+    // 3. 通知后端启流水线
+    const nRes = await fetch('/api/recordings/notify-uploaded', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        visitId: props.visitId,
+        guestName: props.guestName,
+        ossObjectName,
+        fileSize: file.size,
+        asrMode: 'standard',
+      }),
+    })
+    const nData = await nRes.json()
+    if (!nData.success) throw new Error(nData.error || '通知失败')
+
+    setTimeout(loadRecordings, 1000)
   } catch (e) {
     alert('上传失败: ' + e.message)
   } finally {

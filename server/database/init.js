@@ -204,9 +204,10 @@ function runMigrations() {
         duration_sec    REAL,
         transcript      TEXT    DEFAULT '',
         report_json     TEXT    DEFAULT '{}',
-        status          TEXT    DEFAULT 'uploaded',
+        status          TEXT    DEFAULT 'uploaded' CHECK(status IN ('uploaded','transcribing','transcribed','analyzing','completed','failed')),
         error_message   TEXT,
-        created_at      INTEGER NOT NULL
+        created_at      INTEGER NOT NULL,
+        completed_at    INTEGER
       );
       CREATE INDEX idx_vrec_visit ON visit_recordings(visit_id);
     `);
@@ -241,6 +242,32 @@ function runMigrations() {
     } finally {
       db.pragma('foreign_keys = ON');
     }
+  }
+
+  // ── ★ v7.1: add transcript_oss_key column ──
+  try {
+    db.exec('ALTER TABLE visit_recordings ADD COLUMN transcript_oss_key TEXT');
+    console.log('[DB] v7.1 迁移: 已添加 transcript_oss_key 列');
+  } catch (e) {
+    // 列已存在，忽略
+  }
+
+  // ── ★ v7.1.1: add completed_at column ──
+  try {
+    db.exec('ALTER TABLE visit_recordings ADD COLUMN completed_at INTEGER');
+    console.log('[DB] v7.1.1 迁移: 已添加 completed_at 列');
+  } catch (e) {
+    // 列已存在，忽略
+  }
+
+  // ── ★ v7.1.1: fix stale 'uploading' status → 'uploaded' ──
+  try {
+    const fixed = db.prepare("UPDATE visit_recordings SET status = 'uploaded' WHERE status = 'uploading'").run();
+    if (fixed.changes > 0) {
+      console.log(`[DB] v7.1.1 修复: ${fixed.changes} 条 'uploading' 状态记录 → 'uploaded'`);
+    }
+  } catch (e) {
+    console.warn('[DB] 修复 uploading 状态迁移失败:', e.message);
   }
 }
 

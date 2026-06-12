@@ -7,7 +7,8 @@ const routes = [
   { path: '/admin',      name: 'Admin',    component: () => import('../views/AdminView.vue') },
   { path: '/dashboard',  name: 'Dashboard',component: () => import('../views/DashboardView.vue') },  // v3.0
   { path: '/inventory',  name: 'Inventory',component: () => import('../views/InventoryView.vue') },  // v3.0 实时库存
-  { path: '/reports',    name: 'Reports',  component: () => import('../views/ReportListView.vue') },  // v4.0
+  { path: '/test',       name: 'Test',     component: () => import('../views/TestPage.vue') },     // v7.1 录音测试
+  { path: '/oss-admin',  name: 'OssAdmin', component: () => import('../views/OssAdmin.vue') },     // v7.1 OSS管理
 ]
 
 const router = createRouter({
