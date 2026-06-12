@@ -398,22 +398,10 @@ async function queryV3ASR(reqId) {
       // 20000000：result.utterances 有数据 → 已完成；无 → 继续轮询
       const utterances = json.result?.utterances || [];
       if (utterances.length > 0) {
-        // 转写完成，结果在 body 中
-        let transcript = json.result?.text || '';
+        // 转写完成，构建文本和 timeline
+        const transcript = buildTranscript(utterances);
+        const timeline = buildTimeline(utterances);
         const duration = json.audio_info?.duration || 0;
-        const timeline = [];
-        for (const u of utterances) {
-          const mm = String(Math.floor(u.start_time / 60000)).padStart(2, '0');
-          const ss = String(Math.floor((u.start_time % 60000) / 1000)).padStart(2, '0');
-          const speakerId = u.additions?.speaker || '0';
-          const speaker = speakerId === '1' ? '👩‍⚕️ 咨询师' : '👤 顾客';
-          transcript += `[${mm}:${ss}] ${speaker}：${u.text}\n`;
-          timeline.push({
-            s: speakerId, t: u.text,
-            ms: u.start_time,
-            dur: (u.end_time || u.start_time + 1000) - u.start_time,
-          });
-        }
         console.log(`[ASR V3] 转写完成: ${transcript.length} 字符, ${timeline.length} 句`);
         return { transcript: transcript.trim(), timeline, duration };
       }
@@ -427,6 +415,72 @@ async function queryV3ASR(reqId) {
     // 20000001/20000002 = RUNNING → 继续轮询
   }
   throw new Error('V3 转写超时（180秒）');
+}
+
+// ═══════════════════════════════════════════
+// 转写文本工具
+// ═══════════════════════════════════════════
+
+/** 清理语气词 */
+function cleanFillerWords(text) {
+  // 去掉独立语气词 + 标点（短于 2 字的纯语气词）
+  const fillerOnly = /^[呃嗯啊哦唔嘛呀哎诶哈]{1,2}[，,。.！!？?]*$/;
+  if (fillerOnly.test(text.trim())) return '';
+
+  // 去掉开头的语气词
+  let cleaned = text.replace(/^[呃嗯啊哦唔嘛呀哎诶哈]{1,2}[，,。.]?\s*/g, '');
+
+  // 去掉结尾的语气词
+  cleaned = cleaned.replace(/\s*[呃嗯啊哦唔嘛呀哎诶哈]{1,2}[，,。.]?$/g, '');
+
+  // 去掉连续的语气词（如"嗯嗯嗯"）
+  cleaned = cleaned.replace(/[呃嗯啊哦唔嘛呀哎诶哈]{3,}/g, '');
+
+  // 消除多余空格
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+  return cleaned || text.trim(); // fallback：如果清理成空串则保留原文
+}
+
+/**
+ * 构建带说话人标签的转写文本
+ * V3 返回的 speaker ID 是数字（1,2,3,4...），按首次出现顺序映射为 A,B,C...
+ */
+function buildTranscript(utterances) {
+  const speakerMap = new Map(); // id → label
+  let transcript = '';
+
+  for (const u of utterances) {
+    const sid = u.additions?.speaker || '0';
+    if (!speakerMap.has(sid)) {
+      speakerMap.set(sid, String.fromCharCode(65 + speakerMap.size)); // A,B,C...
+    }
+    const label = speakerMap.get(sid);
+
+    const text = cleanFillerWords(u.text || '');
+    if (!text) continue; // 纯语气词跳过
+
+    const mm = String(Math.floor(u.start_time / 60000)).padStart(2, '0');
+    const ss = String(Math.floor((u.start_time % 60000) / 1000)).padStart(2, '0');
+    transcript += `[${mm}:${ss}] 👤 ${label}：${text}\n`;
+  }
+  return transcript.trim();
+}
+
+/** 从 utterances 构建 timeline（保留原始 speakerId 供分析） */
+function buildTimeline(utterances) {
+  const timeline = [];
+  for (const u of utterances) {
+    const speakerId = u.additions?.speaker || '0';
+    const text = cleanFillerWords(u.text || '');
+    if (!text) continue;
+    timeline.push({
+      s: speakerId, t: text,
+      ms: u.start_time,
+      dur: (u.end_time || u.start_time + 1000) - u.start_time,
+    });
+  }
+  return timeline;
 }
 
 /**
@@ -602,18 +656,13 @@ async function runFullPipeline(recordingId, ossObjectName, asrMode = 'standard')
  * 由 asr-callback.routes.js 调用
  */
 async function continueAfterTranscribe(recordingId, text, utterances, durationMs) {
-  const transcript = sanitizeTranscript(text);
+  // ★ 从 utterances 重新构建带说话人标签的文本（含语气词清理）
+  const transcript = sanitizeTranscript(
+    utterances.length > 0 ? buildTranscript(utterances) : text
+  );
 
-  // 构建 timeline（与旧 queryV3ASR 逻辑一致）
-  const timeline = [];
-  for (const u of utterances) {
-    const speakerId = u.additions?.speaker || '0';
-    timeline.push({
-      s: speakerId, t: u.text,
-      ms: u.start_time,
-      dur: (u.end_time || u.start_time + 1000) - u.start_time,
-    });
-  }
+  // 构建 timeline（含语气词清理）
+  const timeline = buildTimeline(utterances);
 
   // 更新 DB：转写文本 + 时间线 + 时长
   db.prepare('UPDATE visit_recordings SET transcript = ?, timeline_json = ?, duration_sec = ? WHERE id = ?')

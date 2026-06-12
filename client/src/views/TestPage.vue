@@ -2,7 +2,6 @@
   <div class="test-page">
     <header class="page-header">
       <h2 class="page-title">🧪 录音分析测试</h2>
-      <p class="page-desc">前端直传 OSS → ASR 转写 → DeepSeek 分析</p>
     </header>
 
     <div class="content-grid">
@@ -11,16 +10,9 @@
         <h3 class="card-title">📤 上传录音</h3>
 
         <div class="config-row">
-          <label class="form-label">
+          <label class="form-label" style="flex:1">
             访客名称
             <input v-model="guestName" class="form-input" placeholder="用于报告标题" />
-          </label>
-          <label class="form-label">
-            ASR 模式
-            <select v-model="asrMode" class="form-select">
-              <option value="standard">标准版 (¥0.80/h)</option>
-              <option value="express">极速版 (¥4.50/h)</option>
-            </select>
           </label>
         </div>
 
@@ -70,14 +62,14 @@
           <p>上传录音后，这里会实时显示分析进度和结果</p>
         </div>
 
+        <div v-if="reportJson" class="result-section">
+          <h4 class="section-title">📈 分析报告</h4>
+          <div class="report-pretty" v-html="formatReport(reportJson)"></div>
+        </div>
+
         <div v-if="transcript" class="result-section">
           <h4 class="section-title">📝 转写文本</h4>
           <pre class="transcript-text">{{ transcript }}</pre>
-        </div>
-
-        <div v-if="reportJson" class="result-section">
-          <h4 class="section-title">📈 分析报告</h4>
-          <pre class="report-json">{{ formatReport(reportJson) }}</pre>
         </div>
 
         <div v-if="errorMsg" class="error-box">
@@ -114,7 +106,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 const BASE = import.meta.env.VITE_API_BASE || ''
 
 const guestName = ref('测试访客')
-const asrMode = ref('standard')
+const asrMode = 'standard'  // ★ 统一标准版
 const file = ref(null)
 const fileInput = ref(null)
 const dragging = ref(false)
@@ -146,13 +138,43 @@ function statusLabel(s) {
 function formatReport(json) {
   const d = json.data_points || {}
   const q = json.analysis_questions || {}
-  const lines = [`💡 需求信号: ${d.client_opportunities_count ?? '?'} 个  |  🎯 捕捉: ${d.consultant_caught_count ?? '?'} 个`]
-  for (const [k,v] of Object.entries(q)) {
-    const label = k.replace(/_/g,' ')
-    if (typeof v === 'string') lines.push(`\n📌 ${label}: ${v}`)
-    else if (typeof v === 'object' && v !== null) lines.push(`\n📌 ${label}: ${JSON.stringify(v)}`)
+
+  const questionLabels = {
+    q1_real_demand: '🔍 客户真实需求',
+    q2_proposed_solutions: '💊 咨询师方案',
+    q3_missed_opportunities: '⚠️ 遗漏机会',
+    q4_business_loss: '💸 经营损失',
   }
-  return lines.join('\n')
+
+  let html = `<div class="report-header">
+    <span class="report-stat">💡 需求信号: <b>${d.client_opportunities_count ?? '?'}</b> 个</span>
+    <span class="report-stat">🎯 成功捕捉: <b>${d.consultant_caught_count ?? '?'}</b> 个</span>
+  </div>`
+
+  for (const [k, v] of Object.entries(q)) {
+    const label = questionLabels[k] || k.replace(/_/g, ' ')
+    html += `<div class="report-card">
+      <div class="report-card-title">${label}</div>`
+
+    if (typeof v === 'object' && v !== null) {
+      if (v.summary) html += `<p class="report-summary">${escapeHtml(v.summary)}</p>`
+      if (v.evidence?.length) {
+        html += '<ul class="report-evidence">'
+        for (const e of v.evidence) {
+          html += `<li>「${escapeHtml(e.quote || e)}」</li>`
+        }
+        html += '</ul>'
+      }
+    } else if (typeof v === 'string') {
+      html += `<p class="report-summary">${escapeHtml(v)}</p>`
+    }
+    html += '</div>'
+  }
+  return html
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
 }
 
 // ── file ──
@@ -325,7 +347,17 @@ onUnmounted(() => clearInterval(pollTimer))
 .result-section { margin-bottom: 16px; }
 .section-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
 .transcript-text { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: 13px; line-height: 1.7; white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
-.report-json { background: #1e293b; color: #e2e8f0; border-radius: 8px; padding: 12px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+
+/* ── 分析报告卡片 ── */
+.report-pretty { font-size: 13px; line-height: 1.7; }
+.report-header { display: flex; gap: 16px; margin-bottom: 12px; padding: 10px 14px; background: linear-gradient(135deg, #1e293b, #0f172a); border-radius: 8px; }
+.report-stat { color: #e2e8f0; font-size: 13px; }
+.report-stat b { color: #38bdf8; font-size: 16px; }
+.report-card { margin-bottom: 12px; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+.report-card-title { font-weight: 600; color: var(--primary); margin-bottom: 6px; font-size: 14px; }
+.report-summary { color: var(--text); margin-bottom: 8px; line-height: 1.7; }
+.report-evidence { margin: 0; padding-left: 18px; }
+.report-evidence li { color: var(--text2); font-size: 12px; margin-bottom: 4px; font-style: italic; }
 
 .empty-state { text-align: center; padding: 40px 20px; color: var(--text2); }
 .empty-icon { font-size: 48px; display: block; margin-bottom: 12px; }
