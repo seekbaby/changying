@@ -122,7 +122,8 @@ const slotStyle = (si) => {
   return { transform: `scale(${s.zoom || 1}) translate(${s.panX || 0}px, ${s.panY || 0}px)` }
 }
 const reset = (si) => {
-  slots[si].zoom = 1
+  // ★ 回到"完整显示"比例，而非 1:1
+  slots[si].zoom = slots[si].fitScale || 1
   slots[si].panX = 0
   slots[si].panY = 0
 }
@@ -199,7 +200,24 @@ function onPinchMove(e, si) {
   pinchBase[si] = d
 }
 function onImgLoad(si) {
-  // 图片加载后重置缩放
+  // ★ 计算 fitScale：让照片完整显示在槽内
+  const img = imgRefs[si]
+  const slot = slotRefs.value?.[si]
+  if (!img || !slot) return
+
+  const sw = slot.clientWidth
+  const sh = slot.clientHeight
+  const iw = img.naturalWidth
+  const ih = img.naturalHeight
+
+  if (!iw || !ih || !sw || !sh) return
+
+  // contain 模式：取宽高比中较小的那个
+  const fit = Math.min(sw / iw, sh / ih)
+  slots[si].fitScale = fit
+  slots[si].zoom = fit
+  slots[si].panX = 0
+  slots[si].panY = 0
 }
 
 // ── 截屏：5 框完整合成 ──
