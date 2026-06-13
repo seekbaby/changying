@@ -174,3 +174,23 @@ router.delete('/photos/:photoId', (req, res) => {
 });
 
 module.exports = router;
+
+// ── multer 错误处理（multer 抛错不会进入 route handler 的 try-catch）──
+router.use((err, req, res, next) => {
+  if (err) {
+    console.error('[Photos] multer 中间件错误:', err.message, err.code || '');
+    // multer 错误码映射
+    const statusMap = {
+      LIMIT_FILE_SIZE: 413,
+      LIMIT_FILE_COUNT: 400,
+      LIMIT_FIELD_KEY: 400,
+      LIMIT_FIELD_VALUE: 400,
+      LIMIT_FIELD_COUNT: 400,
+      LIMIT_PART_COUNT: 400,
+      LIMIT_UNEXPECTED_FILE: 400,
+    };
+    const status = statusMap[err.code] || 500;
+    return res.status(status).json({ error: err.message || '上传处理错误' });
+  }
+  next();
+});

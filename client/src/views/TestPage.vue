@@ -2,6 +2,7 @@
   <div class="test-page">
     <header class="page-header">
       <h2 class="page-title">🧪 录音分析测试</h2>
+      <p class="page-desc">ASR 模式: 标准版</p>
     </header>
 
     <div class="content-grid">
@@ -135,42 +136,80 @@ function statusLabel(s) {
   const m = { uploaded:'📤 已上传', transcribing:'🎙️ 转写中', transcribed:'✅ 转写完成', analyzing:'🤖 分析中', completed:'✅ 完成', error:'❌ 失败', failed:'❌ 失败' }
   return m[s] || s
 }
-function formatReport(json) {
-  const d = json.data_points || {}
-  const q = json.analysis_questions || {}
+// ── Markdown → HTML 渲染 (v8.0 八维度报告) ──
+function formatReport(md) {
+  if (!md) return ''
 
-  const questionLabels = {
-    q1_real_demand: '🔍 客户真实需求',
-    q2_proposed_solutions: '💊 咨询师方案',
-    q3_missed_opportunities: '⚠️ 遗漏机会',
-    q4_business_loss: '💸 经营损失',
-  }
-
-  let html = `<div class="report-header">
-    <span class="report-stat">💡 需求信号: <b>${d.client_opportunities_count ?? '?'}</b> 个</span>
-    <span class="report-stat">🎯 成功捕捉: <b>${d.consultant_caught_count ?? '?'}</b> 个</span>
-  </div>`
-
-  for (const [k, v] of Object.entries(q)) {
-    const label = questionLabels[k] || k.replace(/_/g, ' ')
-    html += `<div class="report-card">
-      <div class="report-card-title">${label}</div>`
-
-    if (typeof v === 'object' && v !== null) {
-      if (v.summary) html += `<p class="report-summary">${escapeHtml(v.summary)}</p>`
-      if (v.evidence?.length) {
-        html += '<ul class="report-evidence">'
-        for (const e of v.evidence) {
-          html += `<li>「${escapeHtml(e.quote || e)}」</li>`
-        }
-        html += '</ul>'
-      }
-    } else if (typeof v === 'string') {
-      html += `<p class="report-summary">${escapeHtml(v)}</p>`
+  // 向后兼容：旧版 JSON 格式
+  try {
+    const parsed = JSON.parse(md)
+    if (parsed && typeof parsed === 'object') {
+      return renderLegacyJson(parsed)
     }
-    html += '</div>'
+  } catch {
+    // 不是 JSON，就是 Markdown
   }
+
+  return renderMarkdown(String(md))
+}
+
+function renderMarkdown(md) {
+  let html = escapeHtml(md)
+
+  // ★ 表格（最先处理）
+  html = html.replace(/\n\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n?)+)/g, (_, header, body) => {
+    const hCells = header.split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('')
+    const rows = body.trim().split('\n').map(row => {
+      const cells = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('')
+      return `<tr>${cells}</tr>`
+    }).join('')
+    return `\n<table class="rpt-table"><thead><tr>${hCells}</tr></thead><tbody>${rows}</tbody></table>\n`
+  })
+
+  // 标题
+  html = html.replace(/^#### (.+)$/gm, '<h5 class="rpt-h5">$1</h5>')
+  html = html.replace(/^### (.+)$/gm, '<h4 class="rpt-h4">$1</h4>')
+  html = html.replace(/^## (.+)$/gm, '<h3 class="rpt-h3">$1</h3>')
+
+  // 粗体
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+
+  // 行内代码
+  html = html.replace(/`([^`]+)`/g, '<code class="rpt-code">$1</code>')
+
+  // 分隔线
+  html = html.replace(/^---+$/gm, '<hr class="rpt-hr">')
+
+  // 列表
+  html = html.replace(/^(\s*)- (.+)$/gm, (_, indent, content) => `${'  '.repeat(Math.floor(indent.length/2))}<li>${content}</li>`)
+  html = html.replace(/^(\s*)\d+\. (.+)$/gm, (_, indent, content) => `${'  '.repeat(Math.floor(indent.length/2))}<li>${content}</li>`)
+
+  // 段落
+  html = html.replace(/\n\n+/g, '</p><p class="rpt-p">')
+  html = '<p class="rpt-p">' + html + '</p>'
+  html = html.replace(/<p class="rpt-p"><\/p>/g, '')
+
   return html
+}
+
+function renderLegacyJson(data) {
+  const d = data.data_points || {}
+  const q = data.analysis_questions || {}
+  const labels = { q1_real_demand: '💡 核心诉求', q2_proposed_solutions: '⚔️ 破局方案', q3_missed_opportunities: '⚠️ 遗漏机会', q4_business_loss: '📉 商业定损' }
+  let h = `<div class="report-header"><span class="report-stat">💡 需求信号: <b>${d.client_opportunities_count ?? '?'}</b> 个</span><span class="report-stat">🎯 成功捕捉: <b>${d.consultant_caught_count ?? '?'}</b> 个</span></div>`
+  for (const [k, v] of Object.entries(q)) {
+    h += `<div class="report-card"><div class="report-card-title">${labels[k] || k}</div>`
+    if (typeof v === 'object' && v !== null) {
+      if (v.summary) h += `<p class="report-summary">${escapeHtml(v.summary)}</p>`
+      if (v.evidence?.length) {
+        h += '<ul class="report-evidence">'
+        for (const e of v.evidence) h += `<li>「${escapeHtml(e.quote || e)}」</li>`
+        h += '</ul>'
+      }
+    }
+    h += '</div>'
+  }
+  return h
 }
 
 function escapeHtml(s) {
@@ -213,7 +252,7 @@ async function startUpload() {
         guestName: guestName.value.trim(),
         ossObjectName,
         fileSize: file.value.size,
-        asrMode: asrMode.value,
+        asrMode,
       }),
     })
     const nData = await nRes.json()
@@ -272,7 +311,7 @@ async function checkStatus(id) {
     pipelineStatus.value = rec.status
     if (rec.transcript) transcript.value = rec.transcript
     if (rec.report_json) {
-      try { reportJson.value = typeof rec.report_json === 'string' ? JSON.parse(rec.report_json) : rec.report_json } catch {}
+      try { reportJson.value = JSON.parse(rec.report_json) } catch { reportJson.value = rec.report_json }
     }
     if (rec.error_message) errorMsg.value = rec.error_message
     if (rec.status === 'completed' || rec.status === 'failed' || rec.status === 'error') clearInterval(pollTimer)
@@ -348,16 +387,20 @@ onUnmounted(() => clearInterval(pollTimer))
 .section-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
 .transcript-text { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: 13px; line-height: 1.7; white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
 
-/* ── 分析报告卡片 ── */
-.report-pretty { font-size: 13px; line-height: 1.7; }
-.report-header { display: flex; gap: 16px; margin-bottom: 12px; padding: 10px 14px; background: linear-gradient(135deg, #1e293b, #0f172a); border-radius: 8px; }
-.report-stat { color: #e2e8f0; font-size: 13px; }
-.report-stat b { color: #38bdf8; font-size: 16px; }
-.report-card { margin-bottom: 12px; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
-.report-card-title { font-weight: 600; color: var(--primary); margin-bottom: 6px; font-size: 14px; }
-.report-summary { color: var(--text); margin-bottom: 8px; line-height: 1.7; }
-.report-evidence { margin: 0; padding-left: 18px; }
-.report-evidence li { color: var(--text2); font-size: 12px; margin-bottom: 4px; font-style: italic; }
+/* ── 分析报告 Markdown 渲染 (v8.0) ── */
+.report-pretty { font-size: 13px; line-height: 1.8; }
+.report-pretty :deep(.rpt-h3) { font-size: 15px; font-weight: 700; color: #15803d; margin: 14px 0 6px; padding-bottom: 4px; border-bottom: 1px solid #bbf7d0; }
+.report-pretty :deep(.rpt-h4) { font-size: 14px; font-weight: 700; color: #16a34a; margin: 12px 0 4px; }
+.report-pretty :deep(.rpt-h5) { font-size: 13px; font-weight: 600; color: #22c55e; margin: 8px 0 4px; }
+.report-pretty :deep(.rpt-p) { margin-bottom: 8px; }
+.report-pretty :deep(.rpt-code) { background: #dcfce7; padding: 1px 4px; border-radius: 3px; font-size: 12px; font-family: monospace; }
+.report-pretty :deep(.rpt-hr) { border: none; border-top: 1px solid #86efac; margin: 12px 0; }
+.report-pretty :deep(.rpt-table) { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+.report-pretty :deep(.rpt-table th) { background: #166534; color: #fff; padding: 6px 10px; text-align: left; font-weight: 600; }
+.report-pretty :deep(.rpt-table td) { padding: 5px 10px; border-bottom: 1px solid #dcfce7; }
+.report-pretty :deep(.rpt-table tr:nth-child(even) td) { background: #f0fdf4; }
+.report-pretty :deep(strong) { color: #0f172a; }
+.report-pretty :deep(li) { margin-bottom: 2px; }
 
 .empty-state { text-align: center; padding: 40px 20px; color: var(--text2); }
 .empty-icon { font-size: 48px; display: block; margin-bottom: 12px; }

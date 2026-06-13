@@ -309,6 +309,9 @@ async function processAndUpload(file) {
   if (count >= 8) { alert(`${type === 'pre' ? '术前' : '术后'}已满8张`); return; }
   uploading.value = true;
   uploadingSlot.value = currentSlotIdx.value;
+
+  // ── Step 1: 上传 ──
+  let uploadOk = false;
   try {
     if (!file || !(file instanceof Blob)) {
       throw new Error('图片数据无效，请重拍');
@@ -316,21 +319,34 @@ async function processAndUpload(file) {
     const thumbBlob = await createThumbnail(file, 300);
     if (!thumbBlob) throw new Error('缩略图生成失败');
     const result = await uploadPhoto(file, thumbBlob, props.visitId, type);
-    if (result.success) {
-      await refreshPhotos();
-      // ★ 不清除 uploadingSlot —— 等 @load 事件触发后由 onImageLoad 清除
-    } else {
-      uploadingSlot.value = -1;  // 失败立即清除
+    if (!result.success) {
       alert(result.error || '上传失败');
+      return;
     }
+    uploadOk = true;
   } catch (e) {
     console.error('upload error:', e);
-    uploadingSlot.value = -1;  // 异常立即清除
+    uploadingSlot.value = -1;
     alert(e.message || '上传失败');
+    return;
   } finally {
     uploading.value = false;
-    // ★★ 不在 finally 清除 uploadingSlot —— 缩略图 <img> 还在浏览器下载中
-    // onImageLoad(idx) 会在图片实际渲染后清除
+  }
+
+  // ── Step 2: 刷新列表（与上传分离，失败不影响结果）──
+  if (uploadOk) {
+    try {
+      await refreshPhotos();
+    } catch (e) {
+      console.warn('[Photo] 列表刷新失败（不影响上传结果）:', e.message);
+      // ★ 静默重试一次
+      setTimeout(async () => {
+        try { await refreshPhotos(); } catch {}
+      }, 2000);
+    }
+    // ★ uploadingSlot 由 onImageLoad/onImageError 清除
+  } else {
+    uploadingSlot.value = -1;
   }
 }
 

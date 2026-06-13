@@ -256,12 +256,12 @@ class VisitService {
         ORDER BY v.visit_date DESC, v.created_at DESC
       `).all(`%${trimmed}%`);
     } else {
-      // ★ v3.0: 空 name → 返回所有顾客的全部历史（限制最多200条，防止大数据量卡死进程）
+      // ★ v3.1: 空 name → 返回所有顾客全部历史，最新到院在最前
       visits = db.prepare(`
         SELECT v.*, s.name as nurse_name
         FROM visits v
         LEFT JOIN staff s ON v.assigned_nurse_id = s.id
-        ORDER BY v.guest_name, v.visit_date DESC, v.created_at DESC
+        ORDER BY v.visit_date DESC, v.guest_name
         LIMIT 200
       `).all();
     }
